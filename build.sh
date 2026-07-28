@@ -436,6 +436,13 @@ COMMON_FLAGS=(
     # the pgssub DECODER was always in, but without this demuxer avformat_open_input rejects the
     # file with AVERROR_INVALIDDATA and external PGS subtitles never load. AetherEngine sidecar path.)
     --enable-demuxer=sup
+    # webvtt: standalone .vtt sidecar files. The webvtt DECODER was always in (it serves WebVTT
+    # tracks inside Matroska and HLS, where those demuxers supply the stream), but without this
+    # demuxer avformat_open_input rejects a .vtt file with AVERROR_INVALIDDATA and an external
+    # WebVTT subtitle never loads. Same shape as the sup case above. It also carries the cue
+    # settings: the demuxer attaches line/position/align to each packet as
+    # AV_PKT_DATA_WEBVTT_SETTINGS, which is the only path they take (the decoder drops them).
+    --enable-demuxer=webvtt
     # Raw MPEG-1/2 and MPEG-4 video elementary-stream demuxers. The mpegps
     # (MPEG Program Stream / DVD VOB) demuxer carries no codec signaling, so
     # it tags a 0x1E0-0x1EF video stream as request_probe and confirms the
