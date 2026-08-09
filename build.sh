@@ -478,6 +478,7 @@ COMMON_FLAGS=(
     --enable-decoder=h264 --enable-decoder=hevc --enable-decoder=vp8
     --enable-decoder=vp9 --enable-decoder=av1 --enable-decoder=libdav1d
     --enable-decoder=mpeg2video --enable-decoder=mpeg4 --enable-decoder=vc1
+    --enable-decoder=qtrle
     --enable-decoder=aac --enable-decoder=aac_latm --enable-decoder=ac3
     --enable-decoder=eac3 --enable-decoder=flac --enable-decoder=mp3
     --enable-decoder=mp3float --enable-decoder=opus --enable-decoder=vorbis
