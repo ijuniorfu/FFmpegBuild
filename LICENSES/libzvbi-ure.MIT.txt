@@ -9,7 +9,7 @@ verbatim from src/ure.c of libzvbi v0.2.44.
     New Mexico State University
 
     Modifications and fixes for the Zapping 0.5 release by
-    Inaki Garcia Etxebarria <garetxe@users.sourceforge.net>
+    Iñaki García Etxebarrria <garetxe@users.sourceforge.net>
 
     Modifications by Michael H. Schimek <mschimek@users.sf.net>
     for libzvbi 0.1: Added character classes :gfx: and :drcs:,
