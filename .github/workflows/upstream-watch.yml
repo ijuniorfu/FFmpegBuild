@@ -19,11 +19,11 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # dolby_vision is pinned in the sibling repository. Checking it here keeps one place to
       # look rather than a second watcher raising a second issue somewhere else.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           repository: superuser404notfound/LibDovi
           path: .libdovi
