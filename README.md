@@ -108,6 +108,18 @@ Assembly-optimized paths are enabled where the Apple toolchain permits.
 - **`patch_ffmpeg_visionos`**: `videotoolbox.c` skips `kCVPixelBufferOpenGLESCompatibilityKey` on visionOS, where the key is unavailable because the platform has neither OpenGL ES nor OpenGL. Upstream selects it on `TARGET_OS_IPHONE`, which is 1 on visionOS (`TARGET_OS_IOS` is the one that is 0), so the hardware-decode path does not compile for `xros` without this. Nothing is lost: the attribute only asks CoreVideo to make the buffer bindable as a GL texture, and on visionOS every consumer is Metal, which the IOSurface properties set alongside it already cover.
 - **`patch_ffmpeg_matroska_tts`**: `matroskadec.c` logs a warning when a Matroska track carries a `TrackTimestampScale` other than 1.0. Timestamp behavior stays exactly as upstream implements it, which is what RFC 9559 specifies (block timestamps and BlockDuration are Track Ticks). The element is deprecated (maxver 3) and many readers ignore it, so a file carrying it may have been authored against such readers and mistime silently; the warning surfaces that condition (AetherEngine issue 145). Until 2.1.x this patch clamped TTS to 1.0; the clamp rested on a wrong reading of the RFC and was dropped after upstream review (FFmpeg PR 23852).
 
+## Keeping the pins current
+
+The versions this package builds are shell variables in `build.sh`, not a manifest, so no dependency bot sees them. `Scripts/check-upstream.py` compares all five (FFmpeg, dav1d, zimg, libzvbi, and `dolby_vision` over in [LibDovi](https://github.com/superuser404notfound/LibDovi)) against what upstream has published:
+
+```bash
+python3 Scripts/check-upstream.py --libdovi ../LibDovi/build.sh
+```
+
+It exits 1 when something is behind and prints why, with any published security advisory for that project attached as context. FFmpeg is compared against the newest patch on the pinned minor line rather than the newest tag overall: moving off `8.1` is a deliberate decision, not a weekly reminder.
+
+The [Upstream watch](.github/workflows/upstream-watch.yml) workflow runs it every Monday and keeps exactly one issue: opened when a pin falls behind, rewritten while it stays behind, and closed by the run that finds everything current again. Nothing is posted when there is nothing to do.
+
 ## Built with
 
 This package is vibe-coded, assembled and maintained by [Vincent Herbst](https://github.com/superuser404notfound) in close pair-programming with **Claude** (Anthropic). The commit log is the receipt: nearly every commit carries a `Co-Authored-By: Claude` trailer.
