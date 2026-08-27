@@ -10,7 +10,7 @@
   <a href="https://swiftpackageindex.com/superuser404notfound/FFmpegBuild"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fsuperuser404notfound%2FFFmpegBuild%2Fbadge%3Ftype%3Dswift-versions"></a>
   <a href="https://swiftpackageindex.com/superuser404notfound/FFmpegBuild"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2Fsuperuser404notfound%2FFFmpegBuild%2Fbadge%3Ftype%3Dplatforms"></a>
   <img src="https://img.shields.io/badge/FFmpeg-8.1-brightgreen">
-  <img src="https://img.shields.io/badge/dav1d-1.5.1-blue">
+  <img src="https://img.shields.io/badge/dav1d-1.5.4-blue">
   <img src="https://img.shields.io/badge/license-LGPL--2.1-lightgrey">
   <a href="https://ko-fi.com/superuser404"><img src="https://img.shields.io/badge/Ko--fi-Support-FF5E5B?logo=kofi&logoColor=white"></a>
 </p>
@@ -27,7 +27,7 @@ Full FFmpeg builds for iOS land at 40-70 MB because they bundle a TLS stack, enc
 
 | Library        | What it does                                          |
 | -------------- | ----------------------------------------------------- |
-| libavformat    | Demux MKV, MP4, WebM, MPEG-TS, MPEG-PS (VOB / DVD), DASH, AVI, OGG, FLV, plus raw elementary streams |
+| libavformat    | Demux MKV, MP4, WebM, MPEG-TS, MPEG-PS (VOB / DVD), HLS, AVI, OGG, FLV, plus raw elementary streams |
 | libavcodec     | Decode video + audio (with VideoToolbox bridge)       |
 | libavutil      | Shared primitives                                     |
 | libswresample  | Audio resampling / channel remap / format convert     |
@@ -94,8 +94,8 @@ Release configuration, dynamic framework binaries as embedded in the app (all si
 
 | Target                            | FFmpeg    | dav1d    | zimg     | zvbi     | Total     |
 | --------------------------------- | --------- | -------- | -------- | -------- | --------- |
-| iOS / tvOS / visionOS arm64       | ~8.2 MB   | ~0.7 MB  | ~0.3 MB  | ~0.5 MB  | ~9.8 MB   |
-| macOS universal (arm64 + x86_64)  | ~17.3 MB  | ~2.3 MB  | ~0.9 MB  | ~1.0 MB  | ~21.5 MB  |
+| iOS / tvOS / visionOS arm64       | ~8.7 MB   | ~0.8 MB  | ~0.3 MB  | ~0.5 MB  | ~10.5 MB  |
+| macOS universal (arm64 + x86_64)  | ~18.3 MB  | ~2.5 MB  | ~0.9 MB  | ~1.0 MB  | ~22.7 MB  |
 
 Assembly-optimized paths are enabled where the Apple toolchain permits.
 
