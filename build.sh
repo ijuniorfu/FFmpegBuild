@@ -531,7 +531,11 @@ COMMON_FLAGS=(
     # (AetherEngine's AudioCodecCompat maps an unrecognised id to .unsupported and
     # the session drops to video-only), which presents as a playback bug rather than
     # an honest unsupported-format error. wmv3 here covers WMV9 inside Matroska and
-    # MPEG-TS, where the container's own demuxer supplies the stream.
+    # MPEG-TS, where the container's own demuxer supplies the stream. Asked in #3
+    # whether the field carries native .wmv / .asf at all, the reporter answered on
+    # 2026-08-28 that Matroska and MPEG-TS are the only shapes their library holds
+    # and that nothing upstream of it produces the native form, so this boundary
+    # rests on a field answer and not only on the argument above.
     --enable-decoder=msmpeg4v1 --enable-decoder=msmpeg4v2 --enable-decoder=msmpeg4v3
     --enable-decoder=wmv1 --enable-decoder=wmv2 --enable-decoder=wmv3
     --enable-decoder=aac --enable-decoder=aac_latm --enable-decoder=ac3
