@@ -697,9 +697,9 @@ fix_install_names() {
     install_name_tool -id "@rpath/${SUBPATH}" "${BIN}"
 
     local PAIRS=(
-        "libavcodec:Libavcodec" "libavformat:Libavformat" "libavutil:Libavutil"
-        "libswresample:Libswresample" "libswscale:Libswscale" "libavfilter:Libavfilter"
-        "libdav1d:Libdav1d" "libzimg:Libzimg" "libzvbi:Libzvbi"
+        "libavcodec:AetherLibavcodec" "libavformat:AetherLibavformat" "libavutil:AetherLibavutil"
+        "libswresample:AetherLibswresample" "libswscale:AetherLibswscale" "libavfilter:AetherLibavfilter"
+        "libdav1d:AetherLibdav1d" "libzimg:AetherLibzimg" "libzvbi:AetherLibzvbi"
     )
     local DEPS
     DEPS=(${(f)"$(otool -L "${BIN}" | awk 'NR>1 {print $1}')"})
@@ -738,7 +738,7 @@ make_framework() {
 
     if [[ "${LIB}" == "zimg" ]]; then
         # Ship only the C API header; zimg++.hpp would put C++ into the
-        # framework module. No Swift consumer imports Libzimg directly
+        # framework module. No Swift consumer imports AetherLibzimg directly
         # (it is a link-only dependency of libavfilter).
         cp "${HEADER_SRC}/zimg.h" "${FW_DIR}/Headers/"
     elif [[ "${LIB}" == "zvbi" ]]; then
@@ -764,6 +764,22 @@ make_framework() {
               "${FW_DIR}/Headers/hwcontext_vaapi.h" \
               "${FW_DIR}/Headers/hwcontext_vdpau.h" \
               "${FW_DIR}/Headers/hwcontext_vulkan.h"
+    fi
+
+    # The frameworks ship under an Aether prefix (see the PAIRS arrays) so this
+    # build can sit in one app next to another FFmpeg. Clang resolves a header's
+    # `#include "libavutil/frame.h"` as a framework include, case-insensitively,
+    # which is how these headers found their siblings while the frameworks were
+    # named Libavutil and friends. Under the prefix that lookup finds nothing,
+    # so rewrite the cross-includes to name the frameworks we actually ship.
+    # FFmpeg headers only: dav1d, zimg and zvbi do not include FFmpeg.
+    if [[ "${LIB}" == lib* ]]; then
+        local SIBLING
+        for SIBLING in libavcodec libavformat libavutil libswresample libswscale libavfilter; do
+            local UPPER="Aether${(C)SIBLING[1]}${SIBLING:1}"
+            LC_ALL=C sed -i '' -E "s|(#include[[:space:]]*\")${SIBLING}/|\\1${UPPER}/|g" \
+                "${FW_DIR}/Headers/"*.h
+        done
     fi
 
     # Lipo
@@ -869,7 +885,7 @@ make_xcframeworks() {
     echo ""
     echo "━━━ Creating XCFrameworks ━━━"
 
-    local PAIRS=("libavcodec:Libavcodec" "libavformat:Libavformat" "libavutil:Libavutil" "libswresample:Libswresample" "libswscale:Libswscale" "libavfilter:Libavfilter" "dav1d:Libdav1d" "zimg:Libzimg" "zvbi:Libzvbi")
+    local PAIRS=("libavcodec:AetherLibavcodec" "libavformat:AetherLibavformat" "libavutil:AetherLibavutil" "libswresample:AetherLibswresample" "libswscale:AetherLibswscale" "libavfilter:AetherLibavfilter" "dav1d:AetherLibdav1d" "zimg:AetherLibzimg" "zvbi:AetherLibzvbi")
 
     for PAIR in "${PAIRS[@]}"; do
         local LIB="${PAIR%%:*}"
