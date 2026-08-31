@@ -68,16 +68,34 @@ Output lands in `Sources/` as xcframeworks, ready to consume via Swift Package M
 ```swift
 // Package.swift
 dependencies: [
-    .package(url: "https://github.com/superuser404notfound/FFmpegBuild", from: "1.0.0")
+    .package(url: "https://github.com/superuser404notfound/FFmpegBuild", from: "3.0.0")
 ]
 
 // Target:
-.product(name: "FFmpegBuild", package: "FFmpegBuild")
+.product(name: "AetherFFmpegBuild", package: "FFmpegBuild")
 ```
 
 Pin `branch: "main"` instead of a version if you want to track the latest rebuilds (that is how [AetherEngine](https://github.com/superuser404notfound/AetherEngine) consumes it).
 
-Then import the modules you need: `Libavformat`, `Libavcodec`, `Libavutil`, `Libswresample`, `Libswscale`, `Libavfilter`, `Libdav1d`. (`Libzimg` is a link-only backend for `zscale`, and `Libzvbi` a link-only backend for the teletext decoder; you don't import either directly.) The umbrella `FFmpegBuild` product links all of them plus the system frameworks (AudioToolbox, CoreMedia, CoreVideo, VideoToolbox) in one shot.
+Then import the modules you need: `AetherLibavformat`, `AetherLibavcodec`, `AetherLibavutil`, `AetherLibswresample`, `AetherLibswscale`, `AetherLibavfilter`, `AetherLibdav1d`. (`AetherLibzimg` is a link-only backend for `zscale`, and `AetherLibzvbi` a link-only backend for the teletext decoder; you don't import either directly.) The umbrella `AetherFFmpegBuild` product links all of them plus the system frameworks (AudioToolbox, CoreMedia, CoreVideo, VideoToolbox) in one shot.
+
+The FFmpeg API itself is unchanged: `avformat_open_input`, `avcodec_send_packet` and the rest keep their names. Only the module and framework names carry the prefix.
+
+## Sitting next to another FFmpeg
+
+Every FFmpeg packaged for Apple platforms declares the same target names, so before 3.0.0 this package could not resolve in an app that also had one. A fallback ladder with KSPlayer, mpv or MobileVLCKit in it is exactly such an app:
+
+```
+error: multiple similar targets 'Libavcodec', 'Libavfilter', 'Libavformat' and 3 others
+appear in package 'ffmpegbuild' and 'ffmpegkit'
+```
+
+`moduleAliases` does not reach this: it renames Swift source targets, not binary ones. Two things had to change, and 3.0.0 changes both:
+
+- **SwiftPM target and product names** are unique across the whole dependency graph. `AetherLibavcodec` no longer meets `Libavcodec`.
+- **Framework bundle and install names**, because two `Libavcodec.framework` bundles cannot both live at `App.app/Frameworks/` under one `@rpath/Libavcodec.framework/Libavcodec`. The shipped install name is now `@rpath/AetherLibavcodec.framework/AetherLibavcodec`.
+
+What the rename does **not** change is the C symbols: `_avcodec_open2` is still `_avcodec_open2` in every FFmpeg on earth. Distinct dynamic frameworks are enough on their own, because the two-level namespace records per reference which dylib it came from. A **static** FFmpeg in the same executable is the case that still bites: its symbols become definitions inside the executable and win for every object linked beside them. The fix there is to link the code that calls this build into its own dynamic framework, so its `_av*` bind at that framework's link. AetherEngine documents the recipe in [docs/api.md](https://github.com/superuser404notfound/AetherEngine/blob/main/docs/api.md#one-ffmpeg-and-it-has-to-be-the-engines).
 
 ## Decoder support
 

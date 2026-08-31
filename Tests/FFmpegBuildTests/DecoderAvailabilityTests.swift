@@ -1,7 +1,7 @@
 import Testing
 import Foundation
-import Libavcodec
-import Libavformat
+import AetherLibavcodec
+import AetherLibavformat
 
 /// Proves the decoder and demuxer allowlists in `build.sh` describe what the
 /// shipped binaries actually carry.
