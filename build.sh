@@ -484,6 +484,10 @@ COMMON_FLAGS=(
     --enable-demuxer=hls --enable-demuxer=matroska
     --enable-demuxer=mov --enable-demuxer=mpegts --enable-demuxer=mpegps
     --enable-demuxer=avi --enable-demuxer=flv --enable-demuxer=h264
+    # asf: native .wmv / .asf. Enabled together with the whole WMA decoder family
+    # below and never without it, see the block there. Unlike the concat demuxer
+    # removed above this is a plain media demuxer, no file-open primitive.
+    --enable-demuxer=asf
     --enable-demuxer=hevc --enable-demuxer=aac --enable-demuxer=ac3
     --enable-demuxer=eac3 --enable-demuxer=flac --enable-demuxer=ogg
     --enable-demuxer=wav --enable-demuxer=mp3 --enable-demuxer=srt
@@ -524,20 +528,27 @@ COMMON_FLAGS=(
     # load with unsupportedCodec, because since FFmpegBuild#1 the routing default is
     # software for everything the native path does not carry. The avi demuxer above
     # is already enabled, so the AVI case is complete with the decoder alone.
-    #
-    # Deliberately NOT enabled: the asf demuxer and the wmav1 / wmav2 decoders. A
-    # native .wmv / .asf file needs all three, and half the set is worse than none:
-    # with the demuxer but no WMA decoder the file plays video with silent audio
-    # (AetherEngine's AudioCodecCompat maps an unrecognised id to .unsupported and
-    # the session drops to video-only), which presents as a playback bug rather than
-    # an honest unsupported-format error. wmv3 here covers WMV9 inside Matroska and
-    # MPEG-TS, where the container's own demuxer supplies the stream. Asked in #3
-    # whether the field carries native .wmv / .asf at all, the reporter answered on
-    # 2026-08-28 that Matroska and MPEG-TS are the only shapes their library holds
-    # and that nothing upstream of it produces the native form, so this boundary
-    # rests on a field answer and not only on the argument above.
     --enable-decoder=msmpeg4v1 --enable-decoder=msmpeg4v2 --enable-decoder=msmpeg4v3
     --enable-decoder=wmv1 --enable-decoder=wmv2 --enable-decoder=wmv3
+    # Windows Media audio, the whole family, which is what makes the native .wmv /
+    # .asf case complete: demuxer above, video decoders on the line above this one,
+    # sound here. #3 closed the other way in August 2026 on the reporter's answer
+    # that their library holds WMV only inside Matroska and MPEG-TS; a second field
+    # report in September 2026 said the native form does turn up, so the boundary
+    # moved rather than the argument.
+    #
+    # All five, not the two a .wmv usually carries, because this chain is
+    # all-or-nothing by construction. AetherEngine's AudioCodecCompat maps an id it
+    # does not know to .unsupported and the session drops to video-only, so every
+    # decoder left out here is a file that plays silently, which reads as a playback
+    # bug where an honest unsupported-format error would not. wmav1 / wmav2 are WMA
+    # Standard, wmapro is WMA 9/10 Pro and the usual audio of anything post-2003,
+    # wmalossless and wmavoice are rare in film content and cost tens of KB between
+    # them, which is less than one silent-audio report costs. WMA is not fMP4-legal,
+    # so AetherEngine's AudioBridge decodes and re-encodes it, same as MP2 and
+    # Blu-ray LPCM below. DecoderAvailabilityTests refuses a half set from here on.
+    --enable-decoder=wmav1 --enable-decoder=wmav2 --enable-decoder=wmapro
+    --enable-decoder=wmalossless --enable-decoder=wmavoice
     --enable-decoder=aac --enable-decoder=aac_latm --enable-decoder=ac3
     --enable-decoder=eac3 --enable-decoder=flac --enable-decoder=mp3
     --enable-decoder=mp3float --enable-decoder=opus --enable-decoder=vorbis

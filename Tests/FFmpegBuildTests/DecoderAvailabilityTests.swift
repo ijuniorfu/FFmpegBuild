@@ -95,27 +95,34 @@ struct DecoderAvailabilityTests {
         }
     }
 
-    /// The native `.wmv` chain is all-in or all-out (FFmpegBuild#3).
+    /// The native `.wmv` chain is all-in or all-out (FFmpegBuild#3), and since
+    /// September 2026 it is in.
     ///
-    /// A `.wmv` file needs the asf demuxer and a WMA decoder together. With the
-    /// demuxer but without `wmav1`/`wmav2`, AetherEngine's `AudioCodecCompat` maps
-    /// the unrecognised id to `.unsupported` and the session drops to video-only:
-    /// the file plays silently, which reads as a playback bug, where today's
-    /// `unsupportedCodec` is at least an honest failure. Enabling one of the three
-    /// therefore means enabling all three plus the engine's audio-route entry, and
-    /// this test is what refuses the half-set.
-    ///
-    /// Currently all three are out, and the field answer behind that is recorded in
-    /// build.sh: the reporter's library carries WMV9 only inside Matroska and
-    /// MPEG-TS, where the container's own demuxer supplies the stream.
-    @Test("the native .wmv chain is whole or absent")
-    func nativeWmvChainIsWholeOrAbsent() {
-        let asf = av_find_input_format("asf") != nil
-        let wmav1 = avcodec_find_decoder_by_name("wmav1") != nil
-        let wmav2 = avcodec_find_decoder_by_name("wmav2") != nil
+    /// Such a file needs three things at once: the asf demuxer to open it, a video
+    /// decoder, and a decoder for whichever WMA flavour its audio track carries. With
+    /// the demuxer but without that last one, AetherEngine's `AudioCodecCompat` maps
+    /// the unrecognised id to `.unsupported` and the session drops to video-only, so
+    /// the file plays silently, which reads as a playback bug where an honest
+    /// `unsupportedCodec` would not. Every name missing below is one such file, which
+    /// is why the whole family ships and why this test lists each one instead of
+    /// trusting the configure line.
+    @Test("the native .wmv chain is whole")
+    func theNativeWmvChainIsWhole() {
         #expect(
-            asf == wmav1 && wmav1 == wmav2,
-            "half a format chain fails silently: asf=\(asf), wmav1=\(wmav1), wmav2=\(wmav2)"
+            av_find_input_format("asf") != nil,
+            "asf demuxer missing: a native .wmv cannot be opened at all"
         )
+        for name in ["wmav1", "wmav2", "wmapro", "wmalossless", "wmavoice"] {
+            #expect(
+                avcodec_find_decoder_by_name(name) != nil,
+                "\(name) missing: files carrying it would play with silent audio"
+            )
+        }
+        // The video half belongs in the same statement, so a failure reads as one fact
+        // about the format rather than sending the reader to another suite to find out
+        // why sound alone was not enough. vc1 is what WVC1, the modern .wmv, carries.
+        for name in ["wmv1", "wmv2", "wmv3", "vc1"] {
+            #expect(avcodec_find_decoder_by_name(name) != nil, "\(name) missing")
+        }
     }
 }
