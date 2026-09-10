@@ -554,10 +554,15 @@ COMMON_FLAGS=(
     # moved rather than the argument.
     #
     # All five, not the two a .wmv usually carries, because this chain is
-    # all-or-nothing by construction. AetherEngine's AudioCodecCompat maps an id it
-    # does not know to .unsupported and the session drops to video-only, so every
-    # decoder left out here is a file that plays silently, which reads as a playback
-    # bug where an honest unsupported-format error would not. wmav1 / wmav2 are WMA
+    # all-or-nothing by construction. A decoder left out here is a file that plays
+    # SILENTLY: AetherEngine's audio bridge asks libavcodec for a decoder by id, that
+    # lookup returns nothing, and the session falls to video-only, which reads as a
+    # playback bug where an honest unsupported-format error would not. Measured
+    # 2026-09-10 with a codec this build omits: `AudioBridge: no FFmpeg decoder for
+    # source codec id 69633 ... falling back to SILENT video-only`. Note the level:
+    # the host's routing table is NOT what decides this, a codec it does not name
+    # still plays as long as the decoder is here, so the promise is made in this
+    # file and nowhere else. wmav1 / wmav2 are WMA
     # Standard, wmapro is WMA 9/10 Pro and the usual audio of anything post-2003,
     # wmalossless and wmavoice are rare in film content and cost tens of KB between
     # them, which is less than one silent-audio report costs. WMA is not fMP4-legal,
@@ -571,9 +576,8 @@ COMMON_FLAGS=(
     --enable-decoder=truehd --enable-decoder=mlp --enable-decoder=dca --enable-decoder=alac
     --enable-decoder=pcm_s16le --enable-decoder=pcm_s24le --enable-decoder=pcm_f32le
     # Flash Video audio, the whole tail, all-or-nothing for the same reason the WMA
-    # family above is: an id AetherEngine's AudioCodecCompat cannot name maps to
-    # .unsupported, the session drops to video-only, and the file plays as a silent
-    # film rather than failing honestly. Nellymoser Asao and ADPCM-SWF are what the
+    # family above is: a decoder missing here is a file that plays as a silent film
+    # rather than failing honestly, because the bridge has nothing to open. Nellymoser Asao and ADPCM-SWF are what the
     # Flash era recorded, speex is its voice codec (native decoder, no libspeex),
     # and FLV's PCM shapes are big-endian S16, unsigned 8-bit and G.711 A-law /
     # mu-law, none of which the little-endian line above carries. None is fMP4-legal,
