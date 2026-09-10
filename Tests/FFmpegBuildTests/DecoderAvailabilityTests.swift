@@ -125,4 +125,36 @@ struct DecoderAvailabilityTests {
             #expect(avcodec_find_decoder_by_name(name) != nil, "\(name) missing")
         }
     }
+
+    /// The native `.flv` chain, whole since 3.2.0, and whole for the same reason.
+    ///
+    /// The container is the part that was never missing: the `flv` demuxer has been on the list
+    /// since the first build, so a Flash file from after 2008 (H.264 + AAC) always played and only
+    /// the legacy tail was absent. Both halves of that tail are asserted here, video and audio,
+    /// because they fail differently and only one of the two failures is honest: without a video
+    /// decoder the load ends in `unsupportedCodec`, without an audio decoder AetherEngine maps the
+    /// id to `.unsupported` and plays the file silently.
+    ///
+    /// Flash Screen Video is deliberately not in this list. It needs zlib, which
+    /// `--disable-autodetect` switches off, so asking for it would only produce the silent
+    /// no-op the dash demuxer once was.
+    @Test("the native .flv chain is whole")
+    func theNativeFlvChainIsWhole() {
+        #expect(
+            av_find_input_format("flv") != nil,
+            "flv demuxer missing: no Flash file opens at all"
+        )
+        // Video. `flv` IS the FLV1 decoder: it registers under the family name, so this is the
+        // spelling a consumer has to ask for, and `flv1` resolves to nothing.
+        for name in ["flv", "vp6", "vp6a", "vp6f"] {
+            #expect(avcodec_find_decoder_by_name(name) != nil, "\(name) missing: those files fail the load")
+        }
+        // Audio, every shape the container can carry, since each one left out is a silent film.
+        for name in ["nellymoser", "adpcm_swf", "speex", "pcm_s16be", "pcm_u8", "pcm_alaw", "pcm_mulaw"] {
+            #expect(
+                avcodec_find_decoder_by_name(name) != nil,
+                "\(name) missing: files carrying it would play with silent audio"
+            )
+        }
+    }
 }

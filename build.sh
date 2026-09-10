@@ -530,6 +530,22 @@ COMMON_FLAGS=(
     # is already enabled, so the AVI case is complete with the decoder alone.
     --enable-decoder=msmpeg4v1 --enable-decoder=msmpeg4v2 --enable-decoder=msmpeg4v3
     --enable-decoder=wmv1 --enable-decoder=wmv2 --enable-decoder=wmv3
+    # Flash Video, the legacy half. The flv DEMUXER has been on the list above since
+    # the beginning, so a modern .flv (H.264 + AAC, everything after 2008) already
+    # direct-plays; what was missing is the decoder tail of the Flash era. FLV1 is
+    # Sorenson Spark, the H.263 variant of every pre-2008 file, and it shares the
+    # h263 / mpeg4 objects already compiled in; vp6 / vp6a / vp6f are the On2 family
+    # Flash 8 brought and pay for the vp56 core once. Note the registered name: the
+    # FLV1 decoder answers to `flv`, which is also what configure wants here, so a
+    # consumer asking for `flv1` by name finds nothing (AetherEngine dispatches by
+    # id and does not care).
+    #
+    # Flash Screen Video (flashsv / flashsv2) is deliberately out: it needs zlib,
+    # which --disable-autodetect above switches off, so the flag would be dropped
+    # without a word, exactly like the dash demuxer. Screen recordings are also not
+    # what a film library holds. Enabling it means --enable-zlib and counting the
+    # generated decoder list afterwards, not adding a flag.
+    --enable-decoder=flv --enable-decoder=vp6 --enable-decoder=vp6a --enable-decoder=vp6f
     # Windows Media audio, the whole family, which is what makes the native .wmv /
     # .asf case complete: demuxer above, video decoders on the line above this one,
     # sound here. #3 closed the other way in August 2026 on the reporter's answer
@@ -554,6 +570,17 @@ COMMON_FLAGS=(
     --enable-decoder=mp3float --enable-decoder=opus --enable-decoder=vorbis
     --enable-decoder=truehd --enable-decoder=mlp --enable-decoder=dca --enable-decoder=alac
     --enable-decoder=pcm_s16le --enable-decoder=pcm_s24le --enable-decoder=pcm_f32le
+    # Flash Video audio, the whole tail, all-or-nothing for the same reason the WMA
+    # family above is: an id AetherEngine's AudioCodecCompat cannot name maps to
+    # .unsupported, the session drops to video-only, and the file plays as a silent
+    # film rather than failing honestly. Nellymoser Asao and ADPCM-SWF are what the
+    # Flash era recorded, speex is its voice codec (native decoder, no libspeex),
+    # and FLV's PCM shapes are big-endian S16, unsigned 8-bit and G.711 A-law /
+    # mu-law, none of which the little-endian line above carries. None is fMP4-legal,
+    # so every one of them goes through AudioBridge. Tens of KB between them.
+    --enable-decoder=nellymoser --enable-decoder=adpcm_swf --enable-decoder=speex
+    --enable-decoder=pcm_s16be --enable-decoder=pcm_u8
+    --enable-decoder=pcm_alaw --enable-decoder=pcm_mulaw
     # Blu-ray LPCM (PCM_BLURAY): M2TS audio tracks that ship raw LPCM. Not
     # legal in fMP4, so AetherEngine's AudioBridge decodes to PCM and
     # re-encodes; without the decoder those tracks are silent. Prep for
