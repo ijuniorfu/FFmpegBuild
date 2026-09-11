@@ -131,6 +131,94 @@ s#               ctx->presentation\.palette_id\);\n        avsubtitle_free\(sub\
     fi
 }
 
+patch_ffmpeg_vc1_parser() {
+    # AetherEngine #490 (FFmpeg PR 24458). libavformat closes and reopens the parser on
+    # every reposition (ff_read_frame_flush), and vc1_parser.c never seeds its VC1Context
+    # from avctx->extradata the way vc1_decode_init does. So after a seek the context has
+    # profile 0 and max_coded_width/height 0 until an in-stream sequence header happens to
+    # pass, and an entry point landing there is read at the wrong bit offset: hrd_full[]
+    # precedes coded_size_flag only when the sequence header set hrd_param_flag, which a
+    # zeroed context cannot know. The bit taken for coded_size_flag is then the top bit of
+    # hrd_full[0], the leaky bucket fullness at that entry point, so a bucket below half
+    # full falls back to the zero pair ("Picture size 0x0 is invalid") and one above half
+    # takes a coded size out of the following payload, silently. The same context also
+    # sends an advanced profile frame header through the simple/main reader, so pict_type
+    # and repeat_pict, which libavformat turns into the packet key flag and the packet
+    # duration, come out of the wrong reader after every seek.
+    local F="${FFMPEG_SRC}/libavcodec/vc1_parser.c"
+    grep -q "vc1_parse_extradata" "${F}" && return
+    echo "→ Patching FFmpeg: seed the VC-1 parse context from extradata (AetherEngine #490)"
+    local SEED
+    SEED=$(cat <<'VC1SEEDEOF'
+/**
+ * Seed the parse context from extradata, the way the decoder does at init.
+ *
+ * libavformat closes and reopens the parser on every reposition
+ * (ff_read_frame_flush()), so each seek starts from a zeroed VC1Context: profile
+ * reads as simple, and max_coded_width/max_coded_height as zero, until an
+ * in-stream sequence header happens to pass. An entry point reaching a context in
+ * that state is read at the wrong bit offset, because whether hrd_full[] precedes
+ * coded_size_flag is a property of the sequence header, and the size it then
+ * falls back to is the zero pair.
+ */
+static void vc1_parse_extradata(AVCodecParserContext *s, AVCodecContext *avctx)
+{
+    VC1ParseContext *vpc = s->priv_data;
+    const uint8_t *start, *end, *next;
+    uint8_t *buf2;
+    GetBitContext gb;
+
+    if (!avctx->extradata || avctx->extradata_size < 16)
+        return;
+
+    buf2 = av_mallocz(avctx->extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
+    if (!buf2)
+        return;
+
+    vpc->v.s.avctx = avctx;
+    end   = avctx->extradata + avctx->extradata_size;
+    start = find_next_marker(avctx->extradata, end);
+    for (next = start; next < end; start = next) {
+        int size, buf2_size;
+
+        next = find_next_marker(start + 4, end);
+        size = next - start - 4;
+        if (size <= 0)
+            continue;
+        buf2_size = vpc->v.vc1dsp.vc1_unescape_buffer(start + 4, size, buf2);
+        if (init_get_bits8(&gb, buf2, buf2_size) < 0)
+            break;
+        switch (AV_RB32(start)) {
+        case VC1_CODE_SEQHDR:
+            if (ff_vc1_decode_sequence_header(avctx, &vpc->v, &gb) < 0)
+                goto done;
+            break;
+        case VC1_CODE_ENTRYPOINT:
+            if (ff_vc1_decode_entry_point(avctx, &vpc->v, &gb) < 0)
+                goto done;
+            break;
+        }
+    }
+
+done:
+    av_free(buf2);
+}
+
+VC1SEEDEOF
+)
+    VC1_SEED="${SEED}" perl -0777 -pi -e '
+s!\Q#include "libavutil/avassert.h"\E!#include "libavutil/avassert.h"\n#include "libavutil/mem.h"!;
+s!\Q    uint8_t prev_start_code;\E!    uint8_t prev_start_code;\n    uint8_t extradata_parsed;!;
+s!\Qstatic int vc1_parse(AVCodecParserContext *s,\E!$ENV{VC1_SEED} . qq{\n\n} . q{static int vc1_parse(AVCodecParserContext *s,}!e;
+s#\Q    int i = vpc->bytes_to_skip;\E\n#    int i = vpc->bytes_to_skip;\n\n    if (!vpc->extradata_parsed) {\n        vpc->extradata_parsed = 1;\n        vc1_parse_extradata(s, avctx);\n    }\n#;
+s!\Q    vpc->prev_start_code = 0;\E!    vpc->prev_start_code = 0;\n    vpc->extradata_parsed = 0;!;
+' "${F}"
+    if ! grep -q "vc1_parse_extradata" "${F}"; then
+        echo "ERROR: vc1_parser extradata seeding patch did not apply (upstream source changed?)"
+        exit 1
+    fi
+}
+
 patch_ffmpeg_visionos() {
     # visionOS has no OpenGL and no OpenGL ES, so kCVPixelBufferOpenGLESCompatibilityKey
     # is marked unavailable there. Upstream picks that key on TARGET_OS_IPHONE, which is 1
@@ -992,6 +1080,7 @@ patch_ffmpeg
 patch_ffmpeg_pgssub
 patch_ffmpeg_visionos
 patch_ffmpeg_matroska_tts
+patch_ffmpeg_vc1_parser
 fetch_dav1d
 fetch_zimg
 fetch_zvbi
