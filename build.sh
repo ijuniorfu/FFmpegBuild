@@ -19,6 +19,14 @@ ZIMG_VERSION="release-3.0.6"
 ZIMG_REPO="https://github.com/sekrit-twc/zimg.git"
 ZVBI_VERSION="v0.2.45"
 ZVBI_REPO="https://github.com/zapping-vbi/zvbi.git"
+# Debug info for crash symbolication. `-gline-tables-only` carries function
+# names, file/line and inlined frames, which is everything a symbolicated crash
+# report needs, and leaves out the type information that makes up the bulk of
+# full `-g` DWARF (measured on tvos-arm64: 11 MB of dSYM for all nine libraries
+# against roughly four times that for -g). It changes no generated code; the
+# shipped binaries are still stripped in make_framework, the debug info is
+# harvested into dSYMs beforehand.
+DEBUG_CFLAG="-gline-tables-only"
 SCRIPT_DIR="${0:a:h}"
 BUILD_DIR="${SCRIPT_DIR}/build"
 OUTPUT_DIR="${SCRIPT_DIR}/Sources"
@@ -400,7 +408,7 @@ ar = '/usr/bin/ar'
 strip = '/usr/bin/strip'
 
 [built-in options]
-c_args = ['-arch', '${ARCH}', '-isysroot', '${SDK_PATH}', '-target', '${TARGET}', '-fno-common']
+c_args = ['-arch', '${ARCH}', '-isysroot', '${SDK_PATH}', '-target', '${TARGET}', '-fno-common', '${DEBUG_CFLAG}']
 c_link_args = ['-arch', '${ARCH}', '-isysroot', '${SDK_PATH}', '-target', '${TARGET}', '-Wl,-headerpad_max_install_names']
 
 [host_machine]
@@ -450,9 +458,14 @@ build_zimg_one() {
 
     local FLAGS="-arch ${ARCH} -isysroot ${SDK_PATH} -target ${TARGET} -fno-common"
 
+    # zimg took autoconf's default CFLAGS ("-g -O2") while this passed none.
+    # Pin both halves so the optimization level stays where it was and the debug
+    # level is the one DEBUG_CFLAG sets.
     cd "${WORK_DIR}"
     CC="clang ${FLAGS}" \
     CXX="clang++ ${FLAGS}" \
+    CFLAGS="-O2 ${DEBUG_CFLAG}" \
+    CXXFLAGS="-O2 ${DEBUG_CFLAG}" \
     LDFLAGS="-Wl,-headerpad_max_install_names" \
     "${ZIMG_SRC}/configure" \
         --host="${HOST_TRIPLE}" \
@@ -486,7 +499,7 @@ build_zvbi_one() {
     [[ "${ARCH}" == "x86_64" ]] && HOST_TRIPLE="x86_64-apple-darwin"
 
     # -fgnu89-inline: libzvbi's misc.h inline helpers need GNU89 extern-inline emission under clang.
-    local FLAGS="-arch ${ARCH} -isysroot ${SDK_PATH} -target ${TARGET} -fno-common -fgnu89-inline"
+    local FLAGS="-arch ${ARCH} -isysroot ${SDK_PATH} -target ${TARGET} -fno-common -fgnu89-inline ${DEBUG_CFLAG}"
 
     cd "${WORK_DIR}"
     # ac_cv_func_(malloc|realloc)_0_nonnull=yes: AC_FUNC_MALLOC/REALLOC run a runtime probe that cannot
@@ -521,7 +534,11 @@ build_zvbi_one() {
 
 COMMON_FLAGS=(
     --enable-pic
-    --enable-optimizations --enable-stripping --disable-debug
+    # --disable-stripping: `make install` would otherwise run strip over the
+    # installed libraries and take the debug map with it, leaving dsymutil
+    # nothing to read. make_framework strips the shipped binary itself, after
+    # make_dsym has harvested the symbols.
+    --enable-optimizations --disable-stripping --disable-debug
     --disable-autodetect --disable-doc --disable-programs
     --disable-devices --disable-outdevs --disable-indevs
     --disable-avdevice --enable-avfilter
@@ -758,7 +775,7 @@ build_one() {
     rm -rf "${INSTALL_DIR}"
     mkdir -p "${INSTALL_DIR}"
 
-    local CFLAGS="-arch ${ARCH} -isysroot ${SDK_PATH} -target ${TARGET} -fno-common -DHAVE_FORK=0"
+    local CFLAGS="-arch ${ARCH} -isysroot ${SDK_PATH} -target ${TARGET} -fno-common -DHAVE_FORK=0 ${DEBUG_CFLAG}"
     local LDFLAGS="-arch ${ARCH} -isysroot ${SDK_PATH} -target ${TARGET} -Wl,-headerpad_max_install_names"
 
     # Add dav1d include/lib paths
@@ -848,6 +865,69 @@ fix_install_names() {
     done
 }
 
+# Absolute path of one thin library, by library name and slice key. Shared by
+# the lipo step and make_dsym so the two can never disagree about what they are
+# looking at.
+thin_lib_path() {
+    local LIB="$1" KEY="$2" EXT="a"
+    [[ "${LINKAGE}" == "dynamic" ]] && EXT="dylib"
+    case "${LIB}" in
+        dav1d) echo "${BUILD_DIR}/dav1d-thin/${KEY}/lib/libdav1d.${EXT}" ;;
+        zimg)  echo "${BUILD_DIR}/zimg-thin/${KEY}/lib/libzimg.${EXT}" ;;
+        zvbi)  echo "${BUILD_DIR}/zvbi-thin/${KEY}/lib/libzvbi.${EXT}" ;;
+        *)     echo "${BUILD_DIR}/thin/${KEY}/lib/${LIB}.${EXT}" ;;
+    esac
+}
+
+# A crash inside these libraries only symbolicates if the archive carries a dSYM
+# whose UUID matches the shipped binary. The linker leaves a debug map in the
+# thin dylib pointing at the .o files under build/work; dsymutil follows it and
+# writes the DWARF into a bundle. Both survive everything make_framework does
+# afterwards (verified: lipo, install_name_tool, strip -x and codesign all leave
+# LC_UUID alone), so the stripped binary we ship and this dSYM stay a pair.
+make_dsym() {
+    local LIB="$1" FW="$2" PLATFORM="$3"
+    shift 3
+    local KEYS=("$@")
+
+    local DSYM="${BUILD_DIR}/dsyms/${PLATFORM}/${FW}.framework.dSYM"
+    rm -rf "${DSYM}"
+    mkdir -p "${DSYM}/Contents/Resources/DWARF"
+
+    local DWARFS=() K THIN OUT
+    for K in "${KEYS[@]}"; do
+        THIN="$(thin_lib_path "${LIB}" "${K}")"
+        OUT="${BUILD_DIR}/dsyms/thin/${K}/${FW}.dSYM"
+        rm -rf "${OUT}"
+        mkdir -p "${BUILD_DIR}/dsyms/thin/${K}"
+        dsymutil --out "${OUT}" "${THIN}"
+        local FOUND=("${OUT}/Contents/Resources/DWARF/"*(N))
+        if (( ${#FOUND} == 0 )); then
+            echo "✗ ${FW} (${K}): no debug info. The object files under build/work/${K}"
+            echo "  are what dsymutil reads, so a repackage after a clean cannot produce"
+            echo "  dSYMs. Run a full ./build.sh instead."
+            exit 1
+        fi
+        DWARFS+=("${FOUND[1]}")
+    done
+
+    lipo -create "${DWARFS[@]}" -output "${DSYM}/Contents/Resources/DWARF/${FW}"
+
+    cat > "${DSYM}/Contents/Info.plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleDevelopmentRegion</key><string>English</string>
+<key>CFBundleIdentifier</key><string>com.apple.xcode.dsym.com.aetherengine.${FW}</string>
+<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+<key>CFBundlePackageType</key><string>dSYM</string>
+<key>CFBundleSignature</key><string>????</string>
+<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>CFBundleVersion</key><string>1</string>
+</dict></plist>
+EOF
+}
+
 make_framework() {
     local LIB="$1" FW="$2" PLATFORM="$3"
     shift 3
@@ -913,25 +993,14 @@ make_framework() {
     fi
 
     # Lipo
-    local EXT="a"
-    [[ "${LINKAGE}" == "dynamic" ]] && EXT="dylib"
     local INPUTS=()
     for K in "${KEYS[@]}"; do
-        local LIB_PATH
-        if [[ "${LIB}" == "dav1d" ]]; then
-            LIB_PATH="${BUILD_DIR}/dav1d-thin/${K}/lib/libdav1d.${EXT}"
-        elif [[ "${LIB}" == "zimg" ]]; then
-            LIB_PATH="${BUILD_DIR}/zimg-thin/${K}/lib/libzimg.${EXT}"
-        elif [[ "${LIB}" == "zvbi" ]]; then
-            LIB_PATH="${BUILD_DIR}/zvbi-thin/${K}/lib/libzvbi.${EXT}"
-        else
-            LIB_PATH="${BUILD_DIR}/thin/${K}/lib/${LIB}.${EXT}"
-        fi
-        INPUTS+=("${LIB_PATH}")
+        INPUTS+=("$(thin_lib_path "${LIB}" "${K}")")
     done
     lipo -create "${INPUTS[@]}" -output "${FW_DIR}/${FW}"
 
     if [[ "${LINKAGE}" == "dynamic" ]]; then
+        make_dsym "${LIB}" "${FW}" "${PLATFORM}" "${KEYS[@]}"
         fix_install_names "${FW_DIR}/${FW}" "${FW}" "${PLATFORM}"
         strip -x "${FW_DIR}/${FW}" 2>/dev/null || true
     fi
@@ -1032,16 +1101,22 @@ make_xcframeworks() {
         local XCF="${OUTPUT_DIR}/${FW}.xcframework"
         rm -rf "${XCF}"
 
+        # The dSYMs ride along for every slice that can end up in a shipped
+        # app, so Xcode copies them into the archive on its own and a crash
+        # inside FFmpeg symbolicates without the adopter doing anything. A
+        # simulator slice reaches neither an archive nor a user's crash report,
+        # and its dSYMs would be another 45 MB of committed binaries, so those
+        # stay out of the xcframework (build/dsyms keeps them for local use).
         echo "  → ${FW}.xcframework"
-        xcodebuild -create-xcframework \
-            -framework "${BUILD_DIR}/frameworks/ios/${FW}.framework" \
-            -framework "${BUILD_DIR}/frameworks/isimulator/${FW}.framework" \
-            -framework "${BUILD_DIR}/frameworks/tvos/${FW}.framework" \
-            -framework "${BUILD_DIR}/frameworks/tvsimulator/${FW}.framework" \
-            -framework "${BUILD_DIR}/frameworks/xros/${FW}.framework" \
-            -framework "${BUILD_DIR}/frameworks/xrsimulator/${FW}.framework" \
-            -framework "${BUILD_DIR}/frameworks/macos/${FW}.framework" \
-            -output "${XCF}" 2>&1 | tail -1
+        local ARGS=()
+        local P=""
+        for P in ios isimulator tvos tvsimulator xros xrsimulator macos; do
+            ARGS+=(-framework "${BUILD_DIR}/frameworks/${P}/${FW}.framework")
+            if [[ "${LINKAGE}" == "dynamic" && "${P}" != *simulator ]]; then
+                ARGS+=(-debug-symbols "${BUILD_DIR}/dsyms/${P}/${FW}.framework.dSYM")
+            fi
+        done
+        xcodebuild -create-xcframework "${ARGS[@]}" -output "${XCF}" 2>&1 | tail -1
         echo "  ✓ ${FW}.xcframework"
     done
 }

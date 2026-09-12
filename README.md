@@ -117,6 +117,18 @@ Release configuration, dynamic framework binaries as embedded in the app (all si
 
 Assembly-optimized paths are enabled where the Apple toolchain permits.
 
+The dSYMs below add roughly 45 MB to a checkout of this package and nothing at all to your app: they are not embedded, Xcode moves them into the archive.
+
+## Crash symbolication
+
+Every slice a shipped app can embed (iOS, tvOS and visionOS device, macOS) carries its dSYM inside the xcframework. Xcode copies it into `.xcarchive/dSYMs` when it embeds the framework, so a crash inside FFmpeg symbolicates in the Organizer, and App Store Connect stops answering an upload with "The archive did not include a dSYM for Libavcodec.framework with the UUIDs [...]". Nothing to do on your side.
+
+The libraries compile with `-gline-tables-only`: function names, file and line, and inlined frames, which is what a crash report resolves against, without the type information that makes up the bulk of full `-g` DWARF. Generated code is unchanged and the shipped binaries are still stripped; the debug information lives in the dSYM only.
+
+Simulator slices ship without dSYMs deliberately. They reach neither an archive nor a user's crash report, and they would put another 45 MB of binaries into every clone. `./build.sh` writes theirs to `build/dsyms` if you want them locally.
+
+Symbols and binaries are a pair per build. A dSYM from one release symbolicates nothing in an app that shipped another, because the UUIDs differ, and releases before 3.3.0 have no dSYMs at all: the debug information was never compiled in, so it cannot be produced for them after the fact.
+
 ## Local FFmpeg patches
 
 `build.sh` applies five small patches to the FFmpeg source after checkout (each documented in place):
