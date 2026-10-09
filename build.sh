@@ -1229,7 +1229,7 @@ patch_ffmpeg_eac3_dec3() {
     #    the independent substream only, and re-read on every packet. With the
     #    objects in the dependent frame it is 0 there, so the box lost the extension.
     #    It is now taken from every substream of the access unit and kept at its
-    #    maximum, like data_rate. Not upstream yet.
+    #    maximum, like data_rate. Proposed upstream as FFmpeg PR 24963.
     local F="${FFMPEG_SRC}/libavformat/movenc.c"
     if ! grep -q "(hdr->channel_map >> (10 - j)) & 1" "${F}"; then
         echo "→ Patching FFmpeg: dec3 chan_loc from a dependent substream's chanmap (upstream f10fdd6310, AetherEngine #728)"
