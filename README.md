@@ -129,6 +129,12 @@ Simulator slices ship without dSYMs deliberately. They reach neither an archive 
 
 Symbols and binaries are a pair per build. A dSYM from one release symbolicates nothing in an app that shipped another, because the UUIDs differ, and releases before 3.3.0 have no dSYMs at all: the debug information was never compiled in, so it cannot be produced for them after the fact.
 
+## Privacy manifest
+
+The frameworks that call one of Apple's required-reason APIs carry their own `PrivacyInfo.xcprivacy`, so an app embedding them does not declare FFmpeg's calls on its behalf and App Store Connect does not answer the upload with ITMS-91053 (FFmpegBuild#10). Today that is `AetherLibavformat`, `AetherLibavutil` and `AetherLibzvbi`, which `stat` files: file timestamp, reasons C617.1 (files in the app's own container) and 3B52.1 (media the user opened). None of them tracks or collects anything.
+
+`build.sh` derives each manifest from the symbols the shipped binary imports, so an update that starts or stops calling one of these APIs changes the manifest with it, and `PrivacyManifestTests` checks the committed frameworks against their own symbol tables.
+
 ## Local FFmpeg patches
 
 `build.sh` applies ten patches to the FFmpeg source after checkout (each documented in place; the largest lives in `patches/`):

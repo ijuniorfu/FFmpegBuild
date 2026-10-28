@@ -1012,6 +1012,47 @@ make_dsym() {
 EOF
 }
 
+# Apple's required-reason APIs (ITMS-91053) are declared by the framework that
+# calls them, so an app embedding these does not declare them on our behalf
+# (FFmpegBuild#10). The manifest follows the symbols the binary actually imports,
+# so an upstream update that starts or stops calling one changes it too.
+write_privacy_manifest() {
+    local FW_DIR="$1" BINARY="$2"
+    local -a IMPORTS
+    IMPORTS=(${(f)"$(nm -u "${BINARY}" 2>/dev/null | sed -E 's/^[[:space:]]*_//; s/\$INODE64$//' | sort -u)"})
+    local FILE_TS=0 DISK=0 BOOT=0 SYM
+    for SYM in "${IMPORTS[@]}"; do
+        case "${SYM}" in
+            stat|fstat|lstat|fstatat|getattrlist|fgetattrlist|getattrlistat|getattrlistbulk) FILE_TS=1 ;;
+            statfs|fstatfs|statvfs|fstatvfs) DISK=1 ;;
+            mach_absolute_time) BOOT=1 ;;
+        esac
+    done
+    (( FILE_TS + DISK + BOOT )) || return 0
+
+    # C617.1: the host's own temp and cache files; 3B52.1: media the user opened.
+    # E174.1: checking for room before writing; 35F9.1: elapsed time.
+    local ENTRIES=""
+    (( FILE_TS )) && ENTRIES+="<dict><key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPICategoryFileTimestamp</string><key>NSPrivacyAccessedAPITypeReasons</key><array><string>C617.1</string><string>3B52.1</string></array></dict>
+"
+    (( DISK )) && ENTRIES+="<dict><key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPICategoryDiskSpace</string><key>NSPrivacyAccessedAPITypeReasons</key><array><string>E174.1</string></array></dict>
+"
+    (( BOOT )) && ENTRIES+="<dict><key>NSPrivacyAccessedAPIType</key><string>NSPrivacyAccessedAPICategorySystemBootTime</string><key>NSPrivacyAccessedAPITypeReasons</key><array><string>35F9.1</string></array></dict>
+"
+    cat > "${FW_DIR}/PrivacyInfo.xcprivacy" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>NSPrivacyTracking</key><false/>
+<key>NSPrivacyTrackingDomains</key><array/>
+<key>NSPrivacyCollectedDataTypes</key><array/>
+<key>NSPrivacyAccessedAPITypes</key><array>
+${ENTRIES}</array>
+</dict></plist>
+EOF
+    plutil -lint -s "${FW_DIR}/PrivacyInfo.xcprivacy" || { echo "ERROR: ${FW_DIR:t} privacy manifest does not parse"; exit 1; }
+}
+
 make_framework() {
     local LIB="$1" FW="$2" PLATFORM="$3"
     shift 3
@@ -1135,6 +1176,8 @@ EOF
 </dict></plist>
 EOF
 
+    write_privacy_manifest "${FW_DIR}" "${FW_DIR}/${FW}"
+
     # macOS requires the versioned ("deep") framework bundle layout, with the
     # binary/Headers/Modules under Versions/A and Info.plist in
     # Versions/A/Resources. iOS/tvOS use shallow bundles (everything at the
@@ -1150,6 +1193,7 @@ EOF
         mv "${FW_DIR}/Headers"    "${V}/Headers"
         mv "${FW_DIR}/Modules"    "${V}/Modules"
         mv "${FW_DIR}/Info.plist" "${V}/Resources/Info.plist"
+        [[ -f "${FW_DIR}/PrivacyInfo.xcprivacy" ]] && mv "${FW_DIR}/PrivacyInfo.xcprivacy" "${V}/Resources/PrivacyInfo.xcprivacy"
         ln -s "A"                          "${FW_DIR}/Versions/Current"
         ln -s "Versions/Current/${FW}"     "${FW_DIR}/${FW}"
         ln -s "Versions/Current/Headers"   "${FW_DIR}/Headers"
@@ -1294,8 +1338,11 @@ write_build_info() {
         fi
         echo ""
         echo "## FFmpeg configure line per slice (repo root shown as <repo>)"
+        # Matched on the build tree rather than on SCRIPT_DIR: the compile and a later
+        # repackage can reach this checkout through different paths (~/Dev is a symlink),
+        # and the line keeps whichever one the compile saw.
         for C in "${BUILD_DIR}"/work/*/config.h(N); do
-            echo "${C:h:t}: $(sed -n 's/^#define FFMPEG_CONFIGURATION "\(.*\)"$/\1/p' "${C}" | sed "s#${SCRIPT_DIR}#<repo>#g")"
+            echo "${C:h:t}: $(sed -n 's/^#define FFMPEG_CONFIGURATION "\(.*\)"$/\1/p' "${C}" | sed -E "s#/[^ =']*(/build/(thin|dav1d-thin|zimg-thin|zvbi-thin)/)#<repo>\1#g")"
         done
         echo ""
         echo "## Shipped binaries (sha256)"
