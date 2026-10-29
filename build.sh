@@ -605,13 +605,18 @@ COMMON_FLAGS=(
     --enable-filter=abuffer --enable-filter=abuffersink --enable-filter=aformat --enable-filter=aresample
     --enable-filter=dialoguenhance --enable-filter=pan
     --enable-filter=acompressor --enable-filter=alimiter
-    # Deinterlacers for AetherEngine's software-decode path. Interlaced
     # Deinterlacers for AetherEngine's software-decode path: interlaced
     # MPEG-2 / VC-1 / MPEG-4 (DVD rips, SD broadcast) plus interlaced H.264
     # (AetherEngine #107: AVPlayer does not deinterlace, so 1080i/576i H.264
     # routes software too). Without these it all renders with combing. bwdif
     # is the CPU primary (better quality), yadif the fallback.
     --enable-filter=bwdif --enable-filter=yadif
+    # Inverse telecine (AetherEngine#853): idet tells telecined film from true
+    # interlace, fieldmatch rebuilds the progressive frames from the field pairs
+    # and decimate drops the duplicate one in five, so 3:2 film plays at 23.976
+    # instead of being deinterlaced to 29.97 with judder. All LGPL (mpdecimate
+    # would be GPL and is not needed).
+    --enable-filter=idet --enable-filter=fieldmatch --enable-filter=decimate
     # Hardware deinterlacer: yadif_videotoolbox runs the yadif kernel as a
     # Metal compute shader over AV_PIX_FMT_VIDEOTOOLBOX frames (no
     # bwdif_videotoolbox exists upstream). hwupload bridges software-decoded
