@@ -594,6 +594,17 @@ COMMON_FLAGS=(
     --enable-filter=format --enable-filter=scale
     --enable-filter=zscale --enable-filter=tonemap
     --enable-filter=colorspace
+    # Audio shaping for AetherEngine (AE#923): the graph runs between the decoder's
+    # resampler and the renderer or the bridge encoder. dialoguenhance pulls the
+    # dialogue out of a stereo mix (3.0 out) and pan folds it back into the pair,
+    # acompressor is night mode, alimiter the lookahead limiter that keeps every
+    # lift from clipping. All LGPL. abuffer / abuffersink / aformat are the graph's
+    # audio ends and its format pin, aresample the converter libavfilter inserts
+    # between filters that work in different sample formats (alimiter and
+    # acompressor take interleaved double, dialoguenhance planar float).
+    --enable-filter=abuffer --enable-filter=abuffersink --enable-filter=aformat --enable-filter=aresample
+    --enable-filter=dialoguenhance --enable-filter=pan
+    --enable-filter=acompressor --enable-filter=alimiter
     # Deinterlacers for AetherEngine's software-decode path. Interlaced
     # Deinterlacers for AetherEngine's software-decode path: interlaced
     # MPEG-2 / VC-1 / MPEG-4 (DVD rips, SD broadcast) plus interlaced H.264

@@ -34,4 +34,16 @@ struct FilterAvailabilityTests {
         #expect(avfilter_get_by_name("bwdif") != nil)
         #expect(avfilter_get_by_name("yadif") != nil)
     }
+
+    @Test("audio shaping filters are available")
+    func audioShapingAvailable() {
+        // AetherEngine#923 builds one graph after its resampler: the stereo
+        // dialogue lift, night mode and the lookahead limiter. Without any one
+        // of them the graph fails to configure and the engine plays the audio
+        // without its dynamics.
+        for name in ["abuffer", "abuffersink", "aformat", "aresample", "pan",
+                     "dialoguenhance", "acompressor", "alimiter"] {
+            #expect(avfilter_get_by_name(name) != nil, "\(name) missing")
+        }
+    }
 }
