@@ -1528,6 +1528,29 @@ patch_ffmpeg_dca_x_heights() {
     }
 }
 
+patch_ffmpeg_av1_delayed_rap() {
+    # AetherEngine #931 (FFmpeg PR 25607). A forward key frame encode opens each GOP with a
+    # Temporal Unit holding a Sequence Header and a HIDDEN Key Frame (show_frame = 0). When
+    # that frame refreshes all eight reference slots, decoding can start right there, but
+    # upstream calls it an inter frame twice: av1_parser only reports a shown Key Frame,
+    # and for Matroska video that verdict replaces the block flag; muxers leave the flag
+    # off too, so matroskadec builds no index and every seek fails. The reporting file
+    # reached the engine without a single keyframe. The patch adds
+    # ff_av1_is_random_access_point() (reads the frame header up to refresh_frame_flags),
+    # and both matroskadec and av1_parser use the full-refresh case. libaom's forward key
+    # frames refresh one slot and stay inter frames. It lives in patches/ because it spans
+    # five files.
+    local P="${SCRIPT_DIR}/patches/av1-delayed-rap.patch"
+    if grep -q "ff_av1_is_random_access_point" "${FFMPEG_SRC}/libavformat/av1.h"; then
+        return
+    fi
+    echo "→ Patching FFmpeg: AV1 full-refresh Delayed Random Access Points are keyframes (AetherEngine #931)"
+    git -C "${FFMPEG_SRC}" apply "${P}" || {
+        echo "ERROR: AV1 delayed random access patch did not apply (upstream source changed?)"
+        exit 1
+    }
+}
+
 echo "╔══════════════════════════════════════╗"
 echo "║  FFmpegBuild: FFmpeg + dav1d (AV1)  ║"
 echo "║  VideoToolbox HW + Metal ready      ║"
@@ -1545,6 +1568,7 @@ patch_ffmpeg_mpegts_mpeg1_probe
 patch_ffmpeg_eac3_dec3
 patch_ffmpeg_movenc_fragment_end
 patch_ffmpeg_dca_x_heights
+patch_ffmpeg_av1_delayed_rap
 fetch_dav1d
 fetch_zimg
 fetch_zvbi
